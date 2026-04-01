@@ -59,7 +59,6 @@ class ModerationService:
     def build_addword_command_result(
         self,
         chat_id: int,
-        author: str,
         command_text: str,
         keyword: str,
     ) -> str:
@@ -68,9 +67,8 @@ class ModerationService:
         if not keyword:
             result_text = "Usage: /addword <слово>"
             logger.info(
-                "chat_id=%s cmd=%s: %r -> %r",
+                "chat_id=%s cmd=%r res=%r",
                 chat_id,
-                author,
                 command_text,
                 result_text,
             )
@@ -80,9 +78,8 @@ class ModerationService:
         added = self.add_keyword(chat_id, keyword)
         result_text = f"Added: {masked_keyword}" if added else f"Already exists: {masked_keyword}"
         logger.info(
-            "chat_id=%s cmd=%s: %r -> %r",
+            "chat_id=%s cmd=%r res=%r",
             chat_id,
-            author,
             command_text,
             result_text,
         )
@@ -91,7 +88,6 @@ class ModerationService:
     def build_removeword_command_result(
         self,
         chat_id: int,
-        author: str,
         command_text: str,
         keyword: str,
     ) -> str:
@@ -100,9 +96,8 @@ class ModerationService:
         if not keyword:
             result_text = "Usage: /removeword <слово>"
             logger.info(
-                "chat_id=%s cmd=%s: %r -> %r",
+                "chat_id=%s cmd=%r res=%r",
                 chat_id,
-                author,
                 command_text,
                 result_text,
             )
@@ -112,24 +107,22 @@ class ModerationService:
         removed = self.remove_keyword(chat_id, keyword)
         result_text = f"Removed: {masked_keyword}" if removed else f"Not found: {masked_keyword}"
         logger.info(
-            "chat_id=%s cmd=%s: %r -> %r",
+            "chat_id=%s cmd: %r -> %r",
             chat_id,
-            author,
             command_text,
             result_text,
         )
         return result_text
 
-    def build_listwords_command_result(self, chat_id: int, author: str, command_text: str) -> str:
+    def build_listwords_command_result(self, chat_id: int, command_text: str) -> str:
         """Build /listwords reply text and log a single command result line."""
 
         keywords = self.list_keywords(chat_id)
         if not keywords:
             result_text = "Keyword list is empty."
             logger.info(
-                "chat_id=%s cmd=%s: %r -> %r",
+                "chat_id=%s cmd=%r res=%r",
                 chat_id,
-                author,
                 command_text,
                 result_text,
             )
@@ -138,21 +131,19 @@ class ModerationService:
         body = "\n".join(f"- {self.mask_word(word)}" for word in keywords)
         result_text = f"Configured keywords:\n{body}"
         logger.info(
-            "chat_id=%s cmd=%s: %r -> %r",
+            "chat_id=%s cmd=%r res=%r",
             chat_id,
-            author,
             command_text,
             result_text,
         )
         return result_text
 
-    def log_caught_message(self, chat_id: int, author: str, caught_text: str, corrected_text: str) -> None:
+    def log_caught_message(self, chat_id: int, caught_text: str, corrected_text: str) -> None:
         """Log a single moderation event line for a caught and corrected message."""
 
         logger.info(
-            "chat_id=%s msg=%s: %r -> %r",
+            "chat_id=%s msg=%r res=%r",
             chat_id,
-            author,
             caught_text,
             corrected_text,
         )

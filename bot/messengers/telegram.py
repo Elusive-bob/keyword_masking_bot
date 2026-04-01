@@ -87,13 +87,11 @@ async def add_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     chat_id = update.effective_chat.id
-    author = _author_name(message)
     command_text = message.text or "/addword"
     keyword = _command_text_args(context)
     await message.delete()
     result_text = _service(context).build_addword_command_result(
         chat_id=chat_id,
-        author=author,
         command_text=command_text,
         keyword=keyword,
     )
@@ -108,13 +106,11 @@ async def remove_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     chat_id = update.effective_chat.id
-    author = _author_name(message)
     command_text = message.text or "/removeword"
     keyword = _command_text_args(context)
     await message.delete()
     result_text = _service(context).build_removeword_command_result(
         chat_id=chat_id,
-        author=author,
         command_text=command_text,
         keyword=keyword,
     )
@@ -129,12 +125,10 @@ async def list_words_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     chat_id = update.effective_chat.id
-    author = _author_name(message)
     command_text = message.text or "/listwords"
     await message.delete()
     reply_text = _service(context).build_listwords_command_result(
         chat_id=chat_id,
-        author=author,
         command_text=command_text,
     )
     await context.bot.send_message(chat_id, reply_text)
@@ -183,7 +177,6 @@ async def moderate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             )
         _service(context).log_caught_message(
             chat_id=chat.id,
-            author=author,
             caught_text=caught_text,
             corrected_text=_build_prefixed_text(author, result.censored_text, limit=120),
         )
