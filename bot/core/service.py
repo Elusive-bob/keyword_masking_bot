@@ -68,7 +68,7 @@ class ModerationService:
         if not keyword:
             result_text = "Usage: /addword <слово>"
             logger.info(
-                "chat_id=%s -> command from %s: %r -> result: %r",
+                "chat_id=%s cmd=%s: %r -> %r",
                 chat_id,
                 author,
                 command_text,
@@ -80,7 +80,7 @@ class ModerationService:
         added = self.add_keyword(chat_id, keyword)
         result_text = f"Added: {masked_keyword}" if added else f"Already exists: {masked_keyword}"
         logger.info(
-            "chat_id=%s -> command from %s: %r -> result: %r",
+            "chat_id=%s cmd=%s: %r -> %r",
             chat_id,
             author,
             command_text,
@@ -100,7 +100,7 @@ class ModerationService:
         if not keyword:
             result_text = "Usage: /removeword <слово>"
             logger.info(
-                "chat_id=%s -> command from %s: %r -> result: %r",
+                "chat_id=%s cmd=%s: %r -> %r",
                 chat_id,
                 author,
                 command_text,
@@ -112,7 +112,7 @@ class ModerationService:
         removed = self.remove_keyword(chat_id, keyword)
         result_text = f"Removed: {masked_keyword}" if removed else f"Not found: {masked_keyword}"
         logger.info(
-            "chat_id=%s -> command from %s: %r -> result: %r",
+            "chat_id=%s cmd=%s: %r -> %r",
             chat_id,
             author,
             command_text,
@@ -127,7 +127,7 @@ class ModerationService:
         if not keywords:
             result_text = "Keyword list is empty."
             logger.info(
-                "chat_id=%s -> command from %s: %r -> result: %r",
+                "chat_id=%s cmd=%s: %r -> %r",
                 chat_id,
                 author,
                 command_text,
@@ -138,7 +138,7 @@ class ModerationService:
         body = "\n".join(f"- {self.mask_word(word)}" for word in keywords)
         result_text = f"Configured keywords:\n{body}"
         logger.info(
-            "chat_id=%s -> command from %s: %r -> result: %r",
+            "chat_id=%s cmd=%s: %r -> %r",
             chat_id,
             author,
             command_text,
@@ -150,7 +150,7 @@ class ModerationService:
         """Log a single moderation event line for a caught and corrected message."""
 
         logger.info(
-            "chat_id=%s -> caught message from %s: %r -> corrected: %r",
+            "chat_id=%s msg=%s: %r -> %r",
             chat_id,
             author,
             caught_text,
