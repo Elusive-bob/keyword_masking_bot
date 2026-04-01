@@ -9,12 +9,14 @@ def mask_word(word: str, mask_char: str = "●") -> str:
 
     # Longer words keep more visible characters at both ends so users can infer them.
     length = len(word)
-    if length <= 5:
+    if length <= 4:
         visible = 1
-    elif length <= 9:
+    elif length <= 6:
         visible = 2
     else:
         visible = 3
+    
+
 
     masked_length = max(1, length - (visible * 2))
     prefix = word[:visible]
