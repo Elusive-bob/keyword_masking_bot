@@ -86,17 +86,18 @@ async def add_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not _is_group_message(update) or update.effective_chat is None or message is None:
         return
 
+    chat_id = update.effective_chat.id
+    author = _author_name(message)
+    command_text = message.text or "/addword"
     keyword = _command_text_args(context)
     await message.delete()
-    if not keyword:
-        await context.bot.send_message(update.effective_chat.id, "Usage: /addword <слово>")
-        return
-
-    added = _service(context).add_keyword(update.effective_chat.id, keyword)
-    if added:
-        await context.bot.send_message(update.effective_chat.id, f"Added: {_service(context).mask_word(keyword)}")
-        return
-    await context.bot.send_message(update.effective_chat.id, f"Already exists: {_service(context).mask_word(keyword)}")
+    result_text = _service(context).build_addword_command_result(
+        chat_id=chat_id,
+        author=author,
+        command_text=command_text,
+        keyword=keyword,
+    )
+    await context.bot.send_message(chat_id, result_text)
 
 
 async def remove_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -106,17 +107,18 @@ async def remove_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not _is_group_message(update) or update.effective_chat is None or message is None:
         return
 
+    chat_id = update.effective_chat.id
+    author = _author_name(message)
+    command_text = message.text or "/removeword"
     keyword = _command_text_args(context)
     await message.delete()
-    if not keyword:
-        await context.bot.send_message(update.effective_chat.id, "Usage: /removeword <слово>")
-        return
-
-    removed = _service(context).remove_keyword(update.effective_chat.id, keyword)
-    if removed:
-        await context.bot.send_message(update.effective_chat.id, f"Removed: {_service(context).mask_word(keyword)}")
-        return
-    await context.bot.send_message(update.effective_chat.id, f"Not found: {_service(context).mask_word(keyword)}")
+    result_text = _service(context).build_removeword_command_result(
+        chat_id=chat_id,
+        author=author,
+        command_text=command_text,
+        keyword=keyword,
+    )
+    await context.bot.send_message(chat_id, result_text)
 
 
 async def list_words_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -126,14 +128,16 @@ async def list_words_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not _is_group_message(update) or update.effective_chat is None or message is None:
         return
 
+    chat_id = update.effective_chat.id
+    author = _author_name(message)
+    command_text = message.text or "/listwords"
     await message.delete()
-    keywords = _service(context).list_keywords(update.effective_chat.id)
-    if not keywords:
-        await context.bot.send_message(update.effective_chat.id, "Keyword list is empty.")
-        return
-
-    body = "\n".join(f"- {_service(context).mask_word(word)}" for word in keywords)
-    await context.bot.send_message(update.effective_chat.id, f"Configured keywords:\n{body}")
+    reply_text = _service(context).build_listwords_command_result(
+        chat_id=chat_id,
+        author=author,
+        command_text=command_text,
+    )
+    await context.bot.send_message(chat_id, reply_text)
 
 
 async def moderate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -158,27 +162,46 @@ async def moderate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     author = _author_name(message)
     reply_to_message_id = _reply_to_id(message)
+    caught_text = _build_prefixed_text(author, text_or_caption, limit=120)
 
     try:
         if message.text is not None:
+            reply_text = _build_prefixed_text(author, result.censored_text, limit=4096)
             await context.bot.send_message(
                 chat_id=chat.id,
-                text=_build_prefixed_text(author, result.censored_text, limit=4096),
+                text=reply_text,
                 reply_to_message_id=reply_to_message_id,
             )
         else:
+            reply_text = _build_prefixed_text(author, result.censored_text, limit=1024)
             await context.bot.copy_message(
                 chat_id=chat.id,
                 from_chat_id=chat.id,
                 message_id=message.message_id,
-                caption=_build_prefixed_text(author, result.censored_text, limit=1024),
+                caption=reply_text,
                 reply_to_message_id=reply_to_message_id,
             )
+        _service(context).log_caught_message(
+            chat_id=chat.id,
+            author=author,
+            caught_text=caught_text,
+            corrected_text=_build_prefixed_text(author, result.censored_text, limit=120),
+        )
     except Exception as exc:
-        logger.exception("Failed to repost moderated message: %s", exc)
+        logger.exception(
+            "error reposting moderated message: chat_id=%s message_id=%s error=%s",
+            chat.id,
+            message.message_id,
+            exc,
+        )
         return
 
     try:
         await message.delete()
     except Exception as exc:
-        logger.exception("Failed to delete original message: %s", exc)
+        logger.exception(
+            "error deleting original message: chat_id=%s message_id=%s error=%s",
+            chat.id,
+            message.message_id,
+            exc,
+        )

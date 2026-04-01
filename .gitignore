@@ -12,3 +12,9 @@ venv/
 
 # Environment variables
 .env
+
+# logs
+bot.log
+
+# db
+bot.db

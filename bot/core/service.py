@@ -1,8 +1,12 @@
+import logging
 from dataclasses import dataclass
 
 from bot.core.censorer import censor_text, mask_word
 from bot.core.matcher import find_triggered_keywords
 from bot.storage.sqlite_store import SQLiteKeywordStore
+
+
+logger = logging.getLogger("bot.service")
 
 
 @dataclass
@@ -52,6 +56,107 @@ class ModerationService:
 
         return mask_word(word, mask_char=self._mask_char)
 
+    def build_addword_command_result(
+        self,
+        chat_id: int,
+        author: str,
+        command_text: str,
+        keyword: str,
+    ) -> str:
+        """Apply /addword semantics, return user-facing result text, and log it."""
+
+        if not keyword:
+            result_text = "Usage: /addword <слово>"
+            logger.info(
+                "chat_id=%s -> command from %s: %r -> result: %r",
+                chat_id,
+                author,
+                command_text,
+                result_text,
+            )
+            return result_text
+
+        masked_keyword = self.mask_word(keyword)
+        added = self.add_keyword(chat_id, keyword)
+        result_text = f"Added: {masked_keyword}" if added else f"Already exists: {masked_keyword}"
+        logger.info(
+            "chat_id=%s -> command from %s: %r -> result: %r",
+            chat_id,
+            author,
+            command_text,
+            result_text,
+        )
+        return result_text
+
+    def build_removeword_command_result(
+        self,
+        chat_id: int,
+        author: str,
+        command_text: str,
+        keyword: str,
+    ) -> str:
+        """Apply /removeword semantics, return user-facing result text, and log it."""
+
+        if not keyword:
+            result_text = "Usage: /removeword <слово>"
+            logger.info(
+                "chat_id=%s -> command from %s: %r -> result: %r",
+                chat_id,
+                author,
+                command_text,
+                result_text,
+            )
+            return result_text
+
+        masked_keyword = self.mask_word(keyword)
+        removed = self.remove_keyword(chat_id, keyword)
+        result_text = f"Removed: {masked_keyword}" if removed else f"Not found: {masked_keyword}"
+        logger.info(
+            "chat_id=%s -> command from %s: %r -> result: %r",
+            chat_id,
+            author,
+            command_text,
+            result_text,
+        )
+        return result_text
+
+    def build_listwords_command_result(self, chat_id: int, author: str, command_text: str) -> str:
+        """Build /listwords reply text and log a single command result line."""
+
+        keywords = self.list_keywords(chat_id)
+        if not keywords:
+            result_text = "Keyword list is empty."
+            logger.info(
+                "chat_id=%s -> command from %s: %r -> result: %r",
+                chat_id,
+                author,
+                command_text,
+                result_text,
+            )
+            return result_text
+
+        body = "\n".join(f"- {self.mask_word(word)}" for word in keywords)
+        result_text = f"Configured keywords:\n{body}"
+        logger.info(
+            "chat_id=%s -> command from %s: %r -> result: %r",
+            chat_id,
+            author,
+            command_text,
+            result_text,
+        )
+        return result_text
+
+    def log_caught_message(self, chat_id: int, author: str, caught_text: str, corrected_text: str) -> None:
+        """Log a single moderation event line for a caught and corrected message."""
+
+        logger.info(
+            "chat_id=%s -> caught message from %s: %r -> corrected: %r",
+            chat_id,
+            author,
+            caught_text,
+            corrected_text,
+        )
+
     def moderate_text(self, chat_id: int, text: str) -> ModerationResult:
         """Check text for triggers and return moderation output."""
 
@@ -61,8 +166,9 @@ class ModerationService:
         if not triggered:
             return ModerationResult(matched=False, censored_text=text, triggered_keywords=set())
 
+        censored = censor_text(text, triggered, mask_char=self._mask_char)
         return ModerationResult(
             matched=True,
-            censored_text=censor_text(text, triggered, mask_char=self._mask_char),
+            censored_text=censored,
             triggered_keywords=triggered,
         )
