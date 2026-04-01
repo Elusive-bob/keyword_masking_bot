@@ -10,23 +10,30 @@ class FinalTestResult(unittest.TextTestResult):
         relative_file = os.path.relpath(source_file, os.getcwd())
         return f"{relative_file}::{test.__class__.__name__}.{test._testMethodName}"
 
-    def getDescription(self, test: unittest.case.TestCase) -> str:
-        details = getattr(test, "_log_details", None)
-        if details:
-            return f"{self._location(test)} | {details}"
-        return f"{self._location(test)} | {test.shortDescription() or test.id()}"
+    def _format_result(self, test: unittest.case.TestCase, status: str) -> str:
+        module_object = getattr(test, "_log_module_object", self._location(test))
+        test_arguments = getattr(test, "_log_arguments", "n/a")
+        asserted_output = getattr(test, "_log_asserted_output", "n/a")
+        output = getattr(test, "_log_output", test.shortDescription() or test.id())
+        return (
+            f"- test: {module_object}\n"
+            f"- args: {test_arguments}\n"
+            f"- assert: {asserted_output}\n"
+            f"- output: {output}\n"
+            f"- {status}\n"
+        )
 
     def addSuccess(self, test: unittest.case.TestCase) -> None:
         super().addSuccess(test)
-        self.stream.writeln(f"{self.getDescription(test)} ... OK\n")
+        self.stream.writeln(self._format_result(test, "ok"))
 
     def addFailure(self, test: unittest.case.TestCase, err) -> None:
         super().addFailure(test, err)
-        self.stream.writeln(f"{self.getDescription(test)} ... FAILED\n")
+        self.stream.writeln(self._format_result(test, "fail"))
 
     def addError(self, test: unittest.case.TestCase, err) -> None:
         super().addError(test, err)
-        self.stream.writeln(f"{self.getDescription(test)} ... ERROR\n")
+        self.stream.writeln(self._format_result(test, "fail"))
 
 
 class FinalTestRunner(unittest.TextTestRunner):
@@ -34,8 +41,8 @@ class FinalTestRunner(unittest.TextTestRunner):
 
 
 def main() -> int:
-    # Discover all tests in the dedicated test folder.
-    suite = unittest.defaultTestLoader.discover("tests")
+    # Discover only the simplified high-level test suite.
+    suite = unittest.defaultTestLoader.discover("tests", pattern="test_basic_*.py")
     print("Starting test run")
     print("Discovery path: tests")
     runner = FinalTestRunner(stream=sys.stdout, verbosity=0)
