@@ -26,9 +26,9 @@ def load_bootstrap_config(path: str) -> BootstrapConfig:
     mask_char = str(raw.get("mask_char", "●")).strip() or "●"
     mask_char = mask_char[0]
 
-    raw_keywords = raw.get("keywords", [])
+    raw_keywords = raw.get("default_keywords", [])
     if not isinstance(raw_keywords, list):
-        raise ValueError("'keywords' must be a list in config.json")
+        raise ValueError("'default_keywords' must be a list in config.json")
 
     seen: set[str] = set()
     default_keywords: list[str] = []

@@ -17,7 +17,7 @@ class TestBasicConfigLoading(LoggedTestCase):
                         "token": "abc-token",
                         "db_path": "my_bot.db",
                         "mask_char": "●",
-                        "keywords": ["Путин", "Наркотик"],
+                        "default_keywords": ["Путин", "Наркотик"],
                     }
                 ),
                 encoding="utf-8",
