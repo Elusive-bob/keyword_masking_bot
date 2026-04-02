@@ -2,26 +2,20 @@ from .matcher import build_keyword_pattern
 
 
 def mask_word(word: str, mask_char: str = "●") -> str:
-    """Mask a word while preserving readable prefix and suffix."""
+    """Mask a word: first and last chars visible, middle chars alternate masked/visible."""
 
-    if len(word) <= 2:
+    if len(word) <= 1:
         return word
 
-    # Longer words keep more visible characters at both ends so users can infer them.
-    length = len(word)
-    if length <= 4:
-        visible = 1
-    elif length <= 6:
-        visible = 2
-    else:
-        visible = 3
-    
-
-
-    masked_length = max(1, length - (visible * 2))
-    prefix = word[:visible]
-    suffix = word[-visible:]
-    return f"{prefix}{mask_char * masked_length}{suffix}"
+    chars = []
+    for i, ch in enumerate(word):
+        if i == 0 or i == len(word) - 1:
+            chars.append(ch)
+        elif i % 2 == 1:
+            chars.append(mask_char)
+        else:
+            chars.append(ch)
+    return "".join(chars)
 
 
 def censor_text(text: str, triggered_keywords: set[str], mask_char: str = "●") -> str:
