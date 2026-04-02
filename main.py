@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from bot.config import load_bootstrap_config
@@ -29,6 +30,14 @@ def main() -> None:
     app = create_telegram_application(token=cfg.token, service=service)
 
     logger.info("Bot started. Monitoring group chats for configured keywords.")
+
+    # Python 3.14 no longer creates an implicit main-thread event loop.
+    # PTB's run_polling() still expects one to exist.
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     app.run_polling()
 
 
