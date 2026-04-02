@@ -19,3 +19,6 @@ bot.log
 
 # db
 bot.db
+
+# token
+TOKEN
