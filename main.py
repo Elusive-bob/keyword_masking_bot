@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 from bot.config import load_bootstrap_config
 from bot.core.service import ModerationService
 from bot.messengers.telegram import create_telegram_application
@@ -10,6 +11,10 @@ from bot.storage.sqlite_store import SQLiteKeywordStore
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("bot.log", encoding="utf-8"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
