@@ -22,3 +22,6 @@ bot.db
 
 # token
 TOKEN
+
+# config
+config.json
