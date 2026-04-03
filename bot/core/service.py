@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from bot.core.censorer import censor_text, mask_word
-from bot.core.matcher import find_triggered_keywords
+from bot.core.matcher import build_keyword_pattern, find_triggered_keywords
 from bot.core.validator import validate_mask_char, validate_word
 from bot.storage.sqlite_store import SQLiteKeywordStore
 
@@ -17,7 +17,7 @@ class ModerationResult:
 
     matched: bool
     censored_text: str
-    triggered_keywords: set[str]
+    triggered_keywords: list[str]
 
 
 class ModerationService:
@@ -126,6 +126,26 @@ class ModerationService:
         logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Settings reset to defaults.")
         return "Settings reset to defaults."
 
+    def build_stats_command_result(
+        self,
+        chat_id: int,
+        command_text: str,
+        chat_name: Optional[str] = None,
+    ) -> str:
+        """Return top 10 moderated keywords for a chat with their match counts."""
+
+        self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
+        stats = self._store.get_keyword_stats(chat_id, limit=10)
+        if not stats:
+            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "No statistics yet.")
+            return "No statistics yet."
+
+        mask_char = self._store.get_mask_char(chat_id)
+        body = "\n".join(f"{mask_word(word, mask_char=mask_char)} - {count}" for word, count in stats)
+        result_text = f"Top moderated keywords:\n{body}"
+        logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, result_text)
+        return result_text
+
     def log_caught_message(self, chat_id: int, caught_text: str, corrected_text: str) -> None:
         """Log a single moderation event line for a caught and corrected message."""
 
@@ -137,15 +157,21 @@ class ModerationService:
         )
 
     def moderate_text(self, chat_id: int, text: str, chat_name: Optional[str] = None) -> ModerationResult:
-        """Check text for triggers and return moderation output."""
+        """Check text for triggers, increment counters, and return moderation output."""
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         mask_char = self._store.get_mask_char(chat_id)
         keywords = self._store.list_keywords(chat_id)
         triggered = find_triggered_keywords(text=text, keywords=keywords)
         if not triggered:
-            return ModerationResult(matched=False, censored_text=text, triggered_keywords=set())
+            return ModerationResult(matched=False, censored_text=text, triggered_keywords=[])
 
+        match_events: list[str] = []
+        for keyword in triggered:
+            count = len(build_keyword_pattern(keyword).findall(text))
+            if count > 0:
+                match_events.extend([keyword] * count)
+        self._store.increment_keyword_match_count(chat_id, match_events)
         censored = censor_text(text, triggered, mask_char=mask_char)
         return ModerationResult(
             matched=True,

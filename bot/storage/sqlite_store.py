@@ -36,6 +36,8 @@ class SQLiteKeywordStore:
             CREATE TABLE IF NOT EXISTS chat_keywords (
                 chat_id INTEGER NOT NULL,
                 keyword TEXT NOT NULL,
+                match_count INTEGER NOT NULL DEFAULT 0,
+                active BOOLEAN NOT NULL DEFAULT 1,
                 PRIMARY KEY (chat_id, keyword),
                 FOREIGN KEY (chat_id) REFERENCES chat_settings(chat_id) ON DELETE CASCADE
             )
@@ -44,11 +46,11 @@ class SQLiteKeywordStore:
         self._connection.commit()
 
     def _insert_default_keywords(self, chat_id: int) -> None:
-        """Insert keywords for one chat."""
+        """Insert default keywords for one chat with active=1."""
 
         for keyword in self._default_keywords:
             self._connection.execute(
-                "INSERT OR IGNORE INTO chat_keywords(chat_id, keyword) VALUES(?, ?)",
+                "INSERT OR IGNORE INTO chat_keywords(chat_id, keyword, match_count, active) VALUES(?, ?, 0, 1)",
                 (chat_id, keyword),
             )
 
@@ -81,10 +83,10 @@ class SQLiteKeywordStore:
         self._connection.commit()
 
     def list_keywords(self, chat_id: int) -> list[str]:
-        """Return sorted keywords for a chat."""
+        """Return sorted active keywords for a chat."""
 
         rows = self._connection.execute(
-            "SELECT keyword FROM chat_keywords WHERE chat_id = ? ORDER BY keyword",
+            "SELECT keyword FROM chat_keywords WHERE chat_id = ? AND active = 1 ORDER BY keyword",
             (chat_id,),
         ).fetchall()
         return [row[0] for row in rows]
@@ -113,35 +115,76 @@ class SQLiteKeywordStore:
         self,
         chat_id: int
     ) -> None:
-        """Reset one chat back to the configured defaults."""
+        """Reset one chat: mask char to default and deactivate non-default keywords."""
 
         self._connection.execute(
             "UPDATE chat_settings SET mask_char = ? WHERE chat_id = ?",
             (self._default_mask_char, chat_id),
         )
-        self._connection.execute(
-            "DELETE FROM chat_keywords WHERE chat_id = ?",
-            (chat_id,),
-        )
-        self._insert_default_keywords(chat_id)
+        # Deactivate all non-default keywords while preserving their match counts.
+        if self._default_keywords:
+            placeholders = ",".join("?" * len(self._default_keywords))
+            self._connection.execute(
+                f"UPDATE chat_keywords SET active = 0 WHERE chat_id = ? AND keyword NOT IN ({placeholders})",
+                (chat_id, *self._default_keywords),
+            )
+
+            # Reactivate default keywords in case they were previously removed.
+            self._connection.execute(
+                f"UPDATE chat_keywords SET active = 1 WHERE chat_id = ? AND keyword IN ({placeholders})",
+                (chat_id, *self._default_keywords),
+            )
+        else:
+            # If there are no defaults configured, deactivate all chat keywords.
+            self._connection.execute(
+                "UPDATE chat_keywords SET active = 0 WHERE chat_id = ?",
+                (chat_id,),
+            )
         self._connection.commit()
 
     def add_keyword(self, chat_id: int, keyword: str) -> bool:
-        """Insert a keyword; return True when newly added."""
+        """Insert new keyword or reactivate removed one. Return True if newly inserted."""
 
+        # Try insert first
         cursor = self._connection.execute(
-            "INSERT OR IGNORE INTO chat_keywords(chat_id, keyword) VALUES(?, ?)",
+            "INSERT OR IGNORE INTO chat_keywords(chat_id, keyword, match_count, active) VALUES(?, ?, 0, 1)",
             (chat_id, keyword),
         )
+        newly_added = cursor.rowcount > 0
+        if not newly_added:
+            # Already exists; if inactive, reactivate it
+            self._connection.execute(
+                "UPDATE chat_keywords SET active = 1 WHERE chat_id = ? AND keyword = ?",
+                (chat_id, keyword),
+            )
         self._connection.commit()
-        return cursor.rowcount > 0
+        return newly_added
 
     def remove_keyword(self, chat_id: int, keyword: str) -> bool:
-        """Delete a keyword; return True when removed."""
+        """Deactivate a keyword; return True when status changed. Stats persist."""
 
         cursor = self._connection.execute(
-            "DELETE FROM chat_keywords WHERE chat_id = ? AND keyword = ?",
+            "UPDATE chat_keywords SET active = 0 WHERE chat_id = ? AND keyword = ? AND active = 1",
             (chat_id, keyword),
         )
         self._connection.commit()
         return cursor.rowcount > 0
+
+    def increment_keyword_match_count(self, chat_id: int, keywords: Iterable[str]) -> None:
+        """Increment match counter for matched keywords in a chat."""
+
+        for keyword in keywords:
+            self._connection.execute(
+                "UPDATE chat_keywords SET match_count = match_count + 1 WHERE chat_id = ? AND keyword = ?",
+                (chat_id, keyword),
+            )
+        self._connection.commit()
+
+    def get_keyword_stats(self, chat_id: int, limit: int = 10) -> list[tuple[str, int]]:
+        """Return top keywords by match count for a chat, sorted descending."""
+
+        rows = self._connection.execute(
+            "SELECT keyword, match_count FROM chat_keywords WHERE chat_id = ? ORDER BY match_count DESC LIMIT ?",
+            (chat_id, limit),
+        ).fetchall()
+        return rows

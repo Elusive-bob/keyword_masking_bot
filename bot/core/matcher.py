@@ -75,11 +75,11 @@ def build_keyword_pattern(keyword: str) -> re.Pattern[str]:
     return re.compile(escaped, re.IGNORECASE)
 
 
-def find_triggered_keywords(text: str, keywords: list[str]) -> set[str]:
+def find_triggered_keywords(text: str, keywords: list[str]) -> list[str]:
     """Return configured keywords that match the input text."""
 
-    found: set[str] = set()
+    found: list[str] = []
     for keyword in keywords:
         if build_keyword_pattern(keyword).search(text):
-            found.add(keyword)
+            found.append(keyword)
     return found

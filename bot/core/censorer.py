@@ -18,7 +18,7 @@ def mask_word(word: str, mask_char: str) -> str:
     return "".join(chars)
 
 
-def censor_text(text: str, triggered_keywords: set[str], mask_char: str) -> str:
+def censor_text(text: str, triggered_keywords: list[str], mask_char: str) -> str:
     """Replace matched keyword variants in text with masked forms."""
 
     result = text

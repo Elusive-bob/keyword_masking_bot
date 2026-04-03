@@ -25,6 +25,7 @@ def create_telegram_application(token: str, service: ModerationService) -> Appli
     app.add_handler(CommandHandler("addword", add_word_command))
     app.add_handler(CommandHandler("removeword", remove_word_command))
     app.add_handler(CommandHandler("listwords", list_words_command))
+    app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("mask_char", set_mask_char_command))
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(
@@ -126,6 +127,25 @@ async def list_words_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     service: ModerationService = context.application.bot_data["service"]
     await message.delete()
     reply_text = service.build_listwords_command_result(
+        chat_id=chat_id,
+        command_text=command_text,
+        chat_name=chat_name,
+    )
+    await context.bot.send_message(chat_id, reply_text)
+
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /stats by posting top moderated keywords for the chat."""
+
+    command_context = _group_command_context(update)
+    if command_context is None:
+        return
+
+    message, chat_id, chat_name = command_context
+    command_text = message.text or "/stats"
+    service: ModerationService = context.application.bot_data["service"]
+    await message.delete()
+    reply_text = service.build_stats_command_result(
         chat_id=chat_id,
         command_text=command_text,
         chat_name=chat_name,
