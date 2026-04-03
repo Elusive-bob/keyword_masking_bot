@@ -1,7 +1,7 @@
 from .matcher import build_keyword_pattern
 
 
-def mask_word(word: str, mask_char: str = "●") -> str:
+def mask_word(word: str, mask_char: str) -> str:
     """Mask a word: first and last chars visible, middle chars alternate masked/visible."""
 
     if len(word) <= 1:
@@ -18,7 +18,7 @@ def mask_word(word: str, mask_char: str = "●") -> str:
     return "".join(chars)
 
 
-def censor_text(text: str, triggered_keywords: set[str], mask_char: str = "●") -> str:
+def censor_text(text: str, triggered_keywords: set[str], mask_char: str) -> str:
     """Replace matched keyword variants in text with masked forms."""
 
     result = text

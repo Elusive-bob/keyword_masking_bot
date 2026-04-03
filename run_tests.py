@@ -16,24 +16,24 @@ class FinalTestResult(unittest.TextTestResult):
         asserted_output = getattr(test, "_log_asserted_output", "n/a")
         output = getattr(test, "_log_output", test.shortDescription() or test.id())
         return (
-            f"- test: {module_object}\n"
-            f"- args: {test_arguments}\n"
-            f"- assert: {asserted_output}\n"
-            f"- output: {output}\n"
-            f"- {status}\n"
+            f"TESTED OBJECT: {module_object}\n"
+            f"TEST ARGUMENTS: {test_arguments}\n"
+            f"EXPECTED RESULT: {asserted_output}\n"
+            f"ACTUAL RESULT: {output}\n"
+            f"STATUS: {status}\n"
         )
 
     def addSuccess(self, test: unittest.case.TestCase) -> None:
         super().addSuccess(test)
-        self.stream.writeln(self._format_result(test, "ok"))
+        self.stream.writeln(self._format_result(test, "OK"))
 
     def addFailure(self, test: unittest.case.TestCase, err) -> None:
         super().addFailure(test, err)
-        self.stream.writeln(self._format_result(test, "fail"))
+        self.stream.writeln(self._format_result(test, "FAILED"))
 
     def addError(self, test: unittest.case.TestCase, err) -> None:
         super().addError(test, err)
-        self.stream.writeln(self._format_result(test, "fail"))
+        self.stream.writeln(self._format_result(test, "FAILED"))
 
 
 class FinalTestRunner(unittest.TextTestRunner):
@@ -41,8 +41,7 @@ class FinalTestRunner(unittest.TextTestRunner):
 
 
 def main() -> int:
-    # Discover only the simplified high-level test suite.
-    suite = unittest.defaultTestLoader.discover("tests", pattern="test_basic_*.py")
+    suite = unittest.defaultTestLoader.discover("tests", pattern="test_*.py")
     print("Starting test run")
     print("Discovery path: tests")
     runner = FinalTestRunner(stream=sys.stdout, verbosity=0)

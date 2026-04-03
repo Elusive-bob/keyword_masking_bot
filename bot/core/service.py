@@ -4,6 +4,7 @@ from typing import Optional
 
 from bot.core.censorer import censor_text, mask_word
 from bot.core.matcher import find_triggered_keywords
+from bot.core.validator import validate_mask_char, validate_word
 from bot.storage.sqlite_store import SQLiteKeywordStore
 
 
@@ -40,9 +41,9 @@ class ModerationService:
         """Apply /addword semantics, return user-facing result text, and log it."""
 
         keyword = keyword.strip().lower()
-        if not keyword:
-            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /addword <слово>")
-            return "Usage: /addword <слово>"
+        if not validate_word(keyword):
+            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /addword <слово>. No special characters or spaces.")
+            return "Usage: /addword <слово>. No special characters or spaces allowed."
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         masked_keyword = mask_word(keyword, mask_char=self._store.get_mask_char(chat_id))
@@ -61,9 +62,9 @@ class ModerationService:
         """Apply /removeword semantics, return user-facing result text, and log it."""
 
         keyword = keyword.strip().lower()
-        if not keyword:
-            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /removeword <слово>")
-            return "Usage: /removeword <слово>"
+        if not validate_word(keyword):
+            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /removeword <слово>. No special characters or spaces.")
+            return "Usage: /removeword <слово>. No special characters or spaces allowed."
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         masked_keyword = mask_word(keyword, mask_char=self._store.get_mask_char(chat_id))
@@ -102,7 +103,7 @@ class ModerationService:
         """Validate and persist a new mask char for one chat."""
 
         normalized = new_mask_char.strip()
-        if len(normalized) != 1:
+        if not validate_mask_char(normalized):
             logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /mask_char <1 symbol>")
             return "Usage: /mask_char <1 symbol>"
 
