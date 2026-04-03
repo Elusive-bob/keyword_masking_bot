@@ -1,13 +1,20 @@
 import sqlite3
-from typing import Iterable
+from typing import Iterable, Optional
 
 
 class SQLiteKeywordStore:
     """SQLite-backed persistence for per-chat keyword configuration."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(
+        self,
+        db_path: str,
+        default_mask_char: str,
+        default_keywords: Iterable[str],
+    ) -> None:
         """Open database connection and ensure schema exists."""
 
+        self._default_mask_char = default_mask_char
+        self._default_keywords = list(default_keywords)
         self._connection = sqlite3.connect(db_path)
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._create_schema()
@@ -19,7 +26,8 @@ class SQLiteKeywordStore:
             """
             CREATE TABLE IF NOT EXISTS chat_settings (
                 chat_id INTEGER PRIMARY KEY,
-                initialized INTEGER NOT NULL DEFAULT 1
+                chat_name TEXT NOT NULL,
+                mask_char TEXT NOT NULL
             )
             """
         )
@@ -35,27 +43,41 @@ class SQLiteKeywordStore:
         )
         self._connection.commit()
 
-    def ensure_chat(self, chat_id: int, default_keywords: Iterable[str]) -> None:
-        """Initialize chat settings and optional default keywords once."""
+    def _insert_default_keywords(self, chat_id: int) -> None:
+        """Insert keywords for one chat."""
 
+        for keyword in self._default_keywords:
+            self._connection.execute(
+                "INSERT OR IGNORE INTO chat_keywords(chat_id, keyword) VALUES(?, ?)",
+                (chat_id, keyword),
+            )
+
+    def ensure_chat(
+        self,
+        chat_id: int,
+        chat_name: Optional[str] = None,
+    ) -> None:
+        """Make sure chat exists in DB or initialize chat settings and optional default keywords once."""
+
+        chat_name = chat_name or ""
         row = self._connection.execute(
-            "SELECT 1 FROM chat_settings WHERE chat_id = ?",
+            "SELECT chat_name FROM chat_settings WHERE chat_id = ?",
             (chat_id,),
         ).fetchone()
         if row:
+            if chat_name and row[0] != chat_name:
+                self._connection.execute(
+                    "UPDATE chat_settings SET chat_name = ? WHERE chat_id = ?",
+                    (chat_name, chat_id),
+                )
+                self._connection.commit()
             return
 
         self._connection.execute(
-            "INSERT INTO chat_settings(chat_id, initialized) VALUES(?, 1)",
-            (chat_id,),
+            "INSERT INTO chat_settings(chat_id, chat_name, mask_char) VALUES(?, ?, ?)",
+            (chat_id, chat_name, self._default_mask_char),
         )
-        for keyword in default_keywords:
-            normalized = keyword.strip().lower()
-            if normalized:
-                self._connection.execute(
-                    "INSERT OR IGNORE INTO chat_keywords(chat_id, keyword) VALUES(?, ?)",
-                    (chat_id, normalized),
-                )
+        self._insert_default_keywords(chat_id)
         self._connection.commit()
 
     def list_keywords(self, chat_id: int) -> list[str]:
@@ -67,30 +89,59 @@ class SQLiteKeywordStore:
         ).fetchall()
         return [row[0] for row in rows]
 
-    def add_keyword(self, chat_id: int, keyword: str) -> bool:
-        """Insert a normalized keyword; return True when newly added."""
+    def get_mask_char(self, chat_id: int) -> str:
+        """Return the configured mask char for a chat."""
 
-        normalized = keyword.strip().lower()
-        if not normalized:
-            return False
+        row = self._connection.execute(
+            "SELECT mask_char FROM chat_settings WHERE chat_id = ?",
+            (chat_id,),
+        ).fetchone()
+        if row is None:
+            return self._default_mask_char
+        return str(row[0])
+
+    def update_mask_char(self, chat_id: int, mask_char: str) -> None:
+        """Persist a new mask char for a chat."""
+
+        self._connection.execute(
+            "UPDATE chat_settings SET mask_char = ? WHERE chat_id = ?",
+            (mask_char, chat_id),
+        )
+        self._connection.commit()
+
+    def reset_chat(
+        self,
+        chat_id: int
+    ) -> None:
+        """Reset one chat back to the configured defaults."""
+
+        self._connection.execute(
+            "UPDATE chat_settings SET mask_char = ? WHERE chat_id = ?",
+            (self._default_mask_char, chat_id),
+        )
+        self._connection.execute(
+            "DELETE FROM chat_keywords WHERE chat_id = ?",
+            (chat_id,),
+        )
+        self._insert_default_keywords(chat_id)
+        self._connection.commit()
+
+    def add_keyword(self, chat_id: int, keyword: str) -> bool:
+        """Insert a keyword; return True when newly added."""
 
         cursor = self._connection.execute(
             "INSERT OR IGNORE INTO chat_keywords(chat_id, keyword) VALUES(?, ?)",
-            (chat_id, normalized),
+            (chat_id, keyword),
         )
         self._connection.commit()
         return cursor.rowcount > 0
 
     def remove_keyword(self, chat_id: int, keyword: str) -> bool:
-        """Delete a normalized keyword; return True when removed."""
-
-        normalized = keyword.strip().lower()
-        if not normalized:
-            return False
+        """Delete a keyword; return True when removed."""
 
         cursor = self._connection.execute(
             "DELETE FROM chat_keywords WHERE chat_id = ? AND keyword = ?",
-            (chat_id, normalized),
+            (chat_id, keyword),
         )
         self._connection.commit()
         return cursor.rowcount > 0

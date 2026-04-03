@@ -16,6 +16,8 @@ logging.basicConfig(
         logging.FileHandler("bot.log", encoding="utf-8"),
     ],
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -25,11 +27,13 @@ def main() -> None:
     config_path = os.getenv("CENSOR_CONFIG_PATH", "config.json")
     cfg = load_bootstrap_config(config_path)
 
-    store = SQLiteKeywordStore(cfg.db_path)
+    store = SQLiteKeywordStore(
+        db_path=cfg.db_path, 
+        default_mask_char=cfg.default_mask_char,
+        default_keywords=cfg.default_keywords,
+    )
     service = ModerationService(
         store=store,
-        default_keywords=cfg.default_keywords,
-        mask_char=cfg.mask_char,
     )
 
     app = create_telegram_application(token=cfg.token, service=service)

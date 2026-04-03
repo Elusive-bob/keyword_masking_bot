@@ -25,23 +25,22 @@ def create_telegram_application(token: str, service: ModerationService) -> Appli
     app.add_handler(CommandHandler("addword", add_word_command))
     app.add_handler(CommandHandler("removeword", remove_word_command))
     app.add_handler(CommandHandler("listwords", list_words_command))
+    app.add_handler(CommandHandler("mask_char", set_mask_char_command))
+    app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(
         MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, moderate_message)
     )
     return app
 
 
-def _service(context: ContextTypes.DEFAULT_TYPE) -> ModerationService:
-    """Read moderation service from app-scoped bot_data."""
+def _group_command_context(update: Update) -> Optional[tuple[Message, int, Optional[str]]]:
+    """Return group command data when the update can be handled."""
 
-    return context.application.bot_data["service"]
-
-
-def _is_group_message(update: Update) -> bool:
-    """Return True when the update comes from group or supergroup chat."""
-
+    message = update.effective_message
     chat = update.effective_chat
-    return chat is not None and chat.type in {"group", "supergroup"}
+    if chat is None or message is None or chat.type not in {"group", "supergroup"}:
+        return None
+    return message, chat.id, _chat_name(update)
 
 
 def _author_name(message: Message) -> str:
@@ -53,19 +52,13 @@ def _author_name(message: Message) -> str:
     return user.full_name or user.username or str(user.id)
 
 
-def _reply_to_id(message: Message) -> Optional[int]:
-    """Return message id of replied-to message when present."""
+def _chat_name(update: Update) -> Optional[str]:
+    """Build a readable name for the current chat when one is available."""
 
-    if message.reply_to_message is None:
+    chat = update.effective_chat
+    if chat is None:
         return None
-    return message.reply_to_message.message_id
-
-
-def _command_text_args(context: ContextTypes.DEFAULT_TYPE) -> str:
-    """Normalize command arguments into one lowercase string."""
-
-    args = context.args or []
-    return " ".join(args).strip().lower()
+    return chat.title or chat.full_name or chat.username
 
 
 def _build_prefixed_text(author: str, text: str, limit: int) -> str:
@@ -82,18 +75,20 @@ def _build_prefixed_text(author: str, text: str, limit: int) -> str:
 async def add_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /addword by deleting command message and updating chat keywords."""
 
-    message = update.effective_message
-    if not _is_group_message(update) or update.effective_chat is None or message is None:
+    command_context = _group_command_context(update)
+    if command_context is None:
         return
 
-    chat_id = update.effective_chat.id
+    message, chat_id, chat_name = command_context
     command_text = message.text or "/addword"
-    keyword = _command_text_args(context)
+    service: ModerationService = context.application.bot_data["service"]
+    keyword = " ".join(context.args or []).strip().lower()
     await message.delete()
-    result_text = _service(context).build_addword_command_result(
+    result_text = service.build_addword_command_result(
         chat_id=chat_id,
         command_text=command_text,
         keyword=keyword,
+        chat_name=chat_name,
     )
     await context.bot.send_message(chat_id, result_text)
 
@@ -101,18 +96,20 @@ async def add_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def remove_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /removeword by deleting command message and updating chat keywords."""
 
-    message = update.effective_message
-    if not _is_group_message(update) or update.effective_chat is None or message is None:
+    command_context = _group_command_context(update)
+    if command_context is None:
         return
 
-    chat_id = update.effective_chat.id
+    message, chat_id, chat_name = command_context
     command_text = message.text or "/removeword"
-    keyword = _command_text_args(context)
+    service: ModerationService = context.application.bot_data["service"]
+    keyword = " ".join(context.args or []).strip().lower()
     await message.delete()
-    result_text = _service(context).build_removeword_command_result(
+    result_text = service.build_removeword_command_result(
         chat_id=chat_id,
         command_text=command_text,
         keyword=keyword,
+        chat_name=chat_name,
     )
     await context.bot.send_message(chat_id, result_text)
 
@@ -120,18 +117,60 @@ async def remove_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def list_words_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /listwords by posting masked keyword list for the chat."""
 
-    message = update.effective_message
-    if not _is_group_message(update) or update.effective_chat is None or message is None:
+    command_context = _group_command_context(update)
+    if command_context is None:
         return
 
-    chat_id = update.effective_chat.id
+    message, chat_id, chat_name = command_context
     command_text = message.text or "/listwords"
+    service: ModerationService = context.application.bot_data["service"]
     await message.delete()
-    reply_text = _service(context).build_listwords_command_result(
+    reply_text = service.build_listwords_command_result(
         chat_id=chat_id,
         command_text=command_text,
+        chat_name=chat_name,
     )
     await context.bot.send_message(chat_id, reply_text)
+
+
+async def set_mask_char_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /mask_char by validating and saving one per-chat mask char."""
+
+    command_context = _group_command_context(update)
+    if command_context is None:
+        return
+
+    message, chat_id, chat_name = command_context
+    command_text = message.text or "/mask_char"
+    service: ModerationService = context.application.bot_data["service"]
+    new_mask_char = " ".join(context.args or []).strip()
+    await message.delete()
+    result_text = service.build_mask_char_command_result(
+        chat_id=chat_id,
+        command_text=command_text,
+        new_mask_char=new_mask_char,
+        chat_name=chat_name,
+    )
+    await context.bot.send_message(chat_id, result_text)
+
+
+async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /reset by restoring chat settings from config defaults."""
+
+    command_context = _group_command_context(update)
+    if command_context is None:
+        return
+
+    message, chat_id, chat_name = command_context
+    command_text = message.text or "/reset"
+    service: ModerationService = context.application.bot_data["service"]
+    await message.delete()
+    result_text = service.build_reset_command_result(
+        chat_id=chat_id,
+        command_text=command_text,
+        chat_name=chat_name,
+    )
+    await context.bot.send_message(chat_id, result_text)
 
 
 async def moderate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -150,12 +189,19 @@ async def moderate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not text_or_caption:
         return
 
-    result = _service(context).moderate_text(chat_id=chat.id, text=text_or_caption)
+    service: ModerationService = context.application.bot_data["service"]
+    result = service.moderate_text(
+        chat_id=chat.id,
+        text=text_or_caption,
+        chat_name=_chat_name(update),
+    )
     if not result.matched:
         return
 
     author = _author_name(message)
-    reply_to_message_id = _reply_to_id(message)
+    reply_to_message_id = (
+        message.reply_to_message.message_id if message.reply_to_message is not None else None
+    )
     caught_text = _build_prefixed_text(author, text_or_caption, limit=120)
 
     try:
@@ -175,7 +221,7 @@ async def moderate_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 caption=reply_text,
                 reply_to_message_id=reply_to_message_id,
             )
-        _service(context).log_caught_message(
+        service.log_caught_message(
             chat_id=chat.id,
             caught_text=caught_text,
             corrected_text=_build_prefixed_text(author, result.censored_text, limit=120),
