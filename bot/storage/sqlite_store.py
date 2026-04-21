@@ -43,6 +43,21 @@ class SQLiteKeywordStore:
             )
             """
         )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                user_name TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                original_message TEXT NOT NULL,
+                bot_response TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (chat_id) REFERENCES chat_settings(chat_id) ON DELETE CASCADE
+            )
+            """
+        )
         self._connection.commit()
 
     def _insert_default_keywords(self, chat_id: int) -> None:
@@ -186,5 +201,47 @@ class SQLiteKeywordStore:
         rows = self._connection.execute(
             "SELECT keyword, match_count FROM chat_keywords WHERE chat_id = ? ORDER BY match_count DESC LIMIT ?",
             (chat_id, limit),
+        ).fetchall()
+        return rows
+
+    def insert_event(
+        self,
+        chat_id: int,
+        user_id: int,
+        user_name: str,
+        event_type: str,
+        original_message: str,
+        bot_response: str,
+    ) -> None:
+        """Insert an event record into the events table."""
+
+        self._connection.execute(
+            """
+            INSERT INTO events (chat_id, user_id, user_name, event_type, original_message, bot_response)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (chat_id, user_id, user_name, event_type, original_message, bot_response),
+        )
+        self._connection.commit()
+
+    def get_author_stats(self, chat_id: int, limit: int = 10) -> list[tuple[str, int]]:
+        """Return top authors by moderation count (grouped by user_id with latest user_name), sorted descending."""
+
+        rows = self._connection.execute(
+            """
+            WITH latest_names AS (
+                SELECT user_id, user_name, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY id DESC) as rn
+                FROM events
+                WHERE chat_id = ? AND event_type = 'moderation'
+            )
+            SELECT latest_names.user_name, COUNT(e.id) as count
+            FROM events e
+            JOIN latest_names ON e.user_id = latest_names.user_id AND latest_names.rn = 1
+            WHERE e.chat_id = ? AND e.event_type = 'moderation'
+            GROUP BY e.user_id
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            (chat_id, chat_id, limit),
         ).fetchall()
         return rows

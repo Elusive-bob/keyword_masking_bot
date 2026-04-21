@@ -48,6 +48,7 @@ class TestDatabase(LoggedTestCase):
             self.assertTrue(db_path.exists())
             self.assertIn("chat_settings", tables)
             self.assertIn("chat_keywords", tables)
+            self.assertIn("events", tables)
             self.assertEqual(settings_row, (chat_name, cfg.default_mask_char))
             self.assertEqual(keywords_after_init, sorted(cfg.default_keywords))
 
@@ -58,11 +59,31 @@ class TestDatabase(LoggedTestCase):
                 chat_name=chat_name,
             )
 
+            # Log the moderation event to increment match_count
+            service.log_caught_message(
+                chat_id=chat_id,
+                user_id=123,
+                user_name="Test User",
+                original_text="путин и война",
+                censored_text="****** и ****",
+                triggered_keywords=moderation_result.triggered_keywords,
+            )
+
             # Same keyword can match multiple times in one message.
             repeat_result = service.moderate_text(
                 chat_id=chat_id,
                 text="путин путин",
                 chat_name=chat_name,
+            )
+
+            # Log the second moderation event
+            service.log_caught_message(
+                chat_id=chat_id,
+                user_id=123,
+                user_name="Test User",
+                original_text="путин путин",
+                censored_text="****** ******",
+                triggered_keywords=repeat_result.triggered_keywords,
             )
 
             self.assertTrue(moderation_result.matched)
@@ -110,6 +131,15 @@ class TestDatabase(LoggedTestCase):
                 chat_id=chat_id,
                 text="test123 here",
                 chat_name=chat_name,
+            )
+
+            service.log_caught_message(
+                chat_id=chat_id,
+                user_id=456,
+                user_name="Another User",
+                original_text="test123 here",
+                censored_text="******* here",
+                triggered_keywords=mod_result.triggered_keywords,
             )
 
             self.assertTrue(mod_result.matched)

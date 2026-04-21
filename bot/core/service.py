@@ -1,5 +1,7 @@
+import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 from bot.core.censorer import censor_text, mask_word
@@ -38,18 +40,16 @@ class ModerationService:
         keyword: str,
         chat_name: Optional[str] = None,
     ) -> str:
-        """Apply /addword semantics, return user-facing result text, and log it."""
+        """Apply /addword semantics and return user-facing result text."""
 
         keyword = keyword.strip().lower()
         if not validate_word(keyword):
-            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /addword <слово>. No special characters or spaces.")
             return "Usage: /addword <слово>. No special characters or spaces allowed."
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         masked_keyword = mask_word(keyword, mask_char=self._store.get_mask_char(chat_id))
         added = self._store.add_keyword(chat_id, keyword)
         result_text = f"Added: {masked_keyword}" if added else f"Already exists: {masked_keyword}"
-        logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, result_text)
         return result_text
 
     def build_removeword_command_result(
@@ -59,18 +59,16 @@ class ModerationService:
         keyword: str,
         chat_name: Optional[str] = None,
     ) -> str:
-        """Apply /removeword semantics, return user-facing result text, and log it."""
+        """Apply /removeword semantics and return user-facing result text."""
 
         keyword = keyword.strip().lower()
         if not validate_word(keyword):
-            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /removeword <слово>. No special characters or spaces.")
             return "Usage: /removeword <слово>. No special characters or spaces allowed."
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         masked_keyword = mask_word(keyword, mask_char=self._store.get_mask_char(chat_id))
         removed = self._store.remove_keyword(chat_id, keyword)
         result_text = f"Removed: {masked_keyword}" if removed else f"Not found: {masked_keyword}"
-        logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, result_text)
         return result_text
 
     def build_listwords_command_result(
@@ -79,18 +77,16 @@ class ModerationService:
         command_text: str,
         chat_name: Optional[str] = None,
     ) -> str:
-        """Build /listwords reply text and log a single command result line."""
+        """Build /listwords reply text with configured keywords."""
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         keywords = self._store.list_keywords(chat_id)
         if not keywords:
-            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Keyword list is empty.")
             return "Keyword list is empty."
 
         mask_char = self._store.get_mask_char(chat_id)
         body = "\n".join(f"- {mask_word(word, mask_char=mask_char)}" for word in keywords)
         result_text = f"Configured keywords:\n{body}"
-        logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, result_text)
         return result_text
 
     def build_mask_char_command_result(
@@ -104,13 +100,11 @@ class ModerationService:
 
         normalized = new_mask_char.strip()
         if not validate_mask_char(normalized):
-            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Usage: /mask_char <1 symbol>")
             return "Usage: /mask_char <1 symbol>"
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         self._store.update_mask_char(chat_id, normalized)
         result_text = f"Mask char updated to: {normalized}"
-        logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, result_text)
         return result_text
 
     def build_reset_command_result(
@@ -123,7 +117,6 @@ class ModerationService:
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         self._store.reset_chat(chat_id=chat_id)
-        logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "Settings reset to defaults.")
         return "Settings reset to defaults."
 
     def build_stats_command_result(
@@ -132,32 +125,108 @@ class ModerationService:
         command_text: str,
         chat_name: Optional[str] = None,
     ) -> str:
-        """Return top 10 moderated keywords for a chat with their match counts."""
+        """Return top 10 keywords and top authors by moderation count for a chat."""
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
-        stats = self._store.get_keyword_stats(chat_id, limit=10)
-        if not stats:
-            logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, "No statistics yet.")
+        keyword_stats = self._store.get_keyword_stats(chat_id, limit=10)
+        author_stats = self._store.get_author_stats(chat_id, limit=10)
+        if not keyword_stats and not author_stats:
             return "No statistics yet."
 
         mask_char = self._store.get_mask_char(chat_id)
-        body = "\n".join(f"{mask_word(word, mask_char=mask_char)} - {count}" for word, count in stats)
-        result_text = f"Top moderated keywords:\n{body}"
-        logger.info("chat_id=%s cmd=%r res=%r", chat_id, command_text, result_text)
+        result_parts = []
+        if keyword_stats:
+            keywords_body = "\n".join(f"{mask_word(word, mask_char=mask_char)} - {count}" for word, count in keyword_stats)
+            result_parts.append(f"Top moderated keywords:\n{keywords_body}")
+        if author_stats:
+            authors_body = "\n".join(f"{author} - {count}" for author, count in author_stats)
+            result_parts.append(f"\nTop moderated authors:\n{authors_body}")
+        result_text = "".join(result_parts)
         return result_text
 
-    def log_caught_message(self, chat_id: int, caught_text: str, corrected_text: str) -> None:
-        """Log a single moderation event line for a caught and corrected message."""
+    def log_caught_message(
+        self,
+        chat_id: int,
+        user_id: int,
+        user_name: str,
+        original_text: str,
+        censored_text: str,
+        triggered_keywords: list[str],
+    ) -> None:
+        """Log a moderation event to database and file in JSON format."""
 
-        logger.info(
-            "chat_id=%s msg=%r res=%r",
-            chat_id,
-            caught_text,
-            corrected_text,
+        # Build match_events to increment counters: count each keyword by occurrences
+        match_events: list[str] = []
+        for keyword in triggered_keywords:
+            count = len(build_keyword_pattern(keyword).findall(original_text))
+            if count > 0:
+                match_events.extend([keyword] * count)
+
+        # Increment match counts for triggered keywords
+        if match_events:
+            self._store.increment_keyword_match_count(chat_id, match_events)
+
+        # Log event to database and JSON log
+        self._log_event(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_name=user_name,
+            event_type="moderation",
+            original_message=original_text,
+            bot_response=censored_text,
         )
 
+    def log_command(
+        self,
+        chat_id: int,
+        user_id: int,
+        user_name: str,
+        original_text: str,
+        bot_response: str,
+    ) -> None:
+        """Log a command event to database and file in JSON format."""
+
+        self._log_event(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_name=user_name,
+            event_type="command",
+            original_message=original_text,
+            bot_response=bot_response,
+        )
+
+    def _log_event(
+        self,
+        chat_id: int,
+        user_id: int,
+        user_name: str,
+        event_type: str,
+        original_message: str,
+        bot_response: str,
+    ) -> None:
+        """Internal helper to log events with consistent JSON format."""
+
+        event_data = {
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "user_name": user_name,
+            "event_type": event_type,
+            "original_message": original_message,
+            "bot_response": bot_response,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self._store.insert_event(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_name=user_name,
+            event_type=event_type,
+            original_message=original_message,
+            bot_response=bot_response,
+        )
+        logger.info("event=%s", json.dumps(event_data))
+
     def moderate_text(self, chat_id: int, text: str, chat_name: Optional[str] = None) -> ModerationResult:
-        """Check text for triggers, increment counters, and return moderation output."""
+        """Check text for triggers and return moderation output. Event logging happens separately."""
 
         self._store.ensure_chat(chat_id=chat_id, chat_name=chat_name)
         mask_char = self._store.get_mask_char(chat_id)
@@ -166,12 +235,6 @@ class ModerationService:
         if not triggered:
             return ModerationResult(matched=False, censored_text=text, triggered_keywords=[])
 
-        match_events: list[str] = []
-        for keyword in triggered:
-            count = len(build_keyword_pattern(keyword).findall(text))
-            if count > 0:
-                match_events.extend([keyword] * count)
-        self._store.increment_keyword_match_count(chat_id, match_events)
         censored = censor_text(text, triggered, mask_char=mask_char)
         return ModerationResult(
             matched=True,
