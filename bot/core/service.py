@@ -141,7 +141,7 @@ class ModerationService:
         if author_stats:
             authors_body = "\n".join(f"{author} - {count}" for author, count in author_stats)
             result_parts.append(f"\nTop moderated authors:\n{authors_body}")
-        result_text = "".join(result_parts)
+        result_text = "\n".join(result_parts)
         return result_text
 
     def log_caught_message(
@@ -223,7 +223,7 @@ class ModerationService:
             original_message=original_message,
             bot_response=bot_response,
         )
-        logger.info("event=%s", json.dumps(event_data))
+        logger.info("event=%s", json.dumps(event_data, ensure_ascii=False))
 
     def moderate_text(self, chat_id: int, text: str, chat_name: Optional[str] = None) -> ModerationResult:
         """Check text for triggers and return moderation output. Event logging happens separately."""
