@@ -27,6 +27,7 @@ def create_telegram_application(token: str, service: ModerationService) -> Appli
     app.add_handler(CommandHandler("listwords", list_words_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("mask_char", set_mask_char_command))
+    app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(
         MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, moderate_message)
@@ -51,6 +52,16 @@ def _author_name(message: Message) -> str:
     if user is None:
         return "Unknown"
     return user.full_name or user.username or str(user.id)
+
+
+async def _is_chat_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Return True if the sender of the update is an admin or creator of the chat."""
+    chat = update.effective_chat
+    user = update.effective_user
+    if chat is None or user is None:
+        return False
+    member = await context.bot.get_chat_member(chat.id, user.id)
+    return member.status in {"administrator", "creator"}
 
 
 def _chat_name(update: Update) -> Optional[str]:
@@ -81,6 +92,11 @@ async def add_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     message, chat_id, chat_name = command_context
+    if not await _is_chat_admin(update, context):
+        await message.delete()
+        await context.bot.send_message(chat_id, "Команды доступны только админам")
+        return
+
     command_text = message.text or "/addword"
     service: ModerationService = context.application.bot_data["service"]
     keyword = " ".join(context.args or []).strip().lower()
@@ -111,6 +127,11 @@ async def remove_word_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     message, chat_id, chat_name = command_context
+    if not await _is_chat_admin(update, context):
+        await message.delete()
+        await context.bot.send_message(chat_id, "Команды доступны только админам")
+        return
+
     command_text = message.text or "/removeword"
     service: ModerationService = context.application.bot_data["service"]
     keyword = " ".join(context.args or []).strip().lower()
@@ -141,6 +162,11 @@ async def list_words_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     message, chat_id, chat_name = command_context
+    if not await _is_chat_admin(update, context):
+        await message.delete()
+        await context.bot.send_message(chat_id, "Команды доступны только админам")
+        return
+
     command_text = message.text or "/listwords"
     service: ModerationService = context.application.bot_data["service"]
     user_id = message.from_user.id if message.from_user else 0
@@ -169,6 +195,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     message, chat_id, chat_name = command_context
+    if not await _is_chat_admin(update, context):
+        await message.delete()
+        await context.bot.send_message(chat_id, "Команды доступны только админам")
+        return
+
     command_text = message.text or "/stats"
     service: ModerationService = context.application.bot_data["service"]
     user_id = message.from_user.id if message.from_user else 0
@@ -197,6 +228,11 @@ async def set_mask_char_command(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     message, chat_id, chat_name = command_context
+    if not await _is_chat_admin(update, context):
+        await message.delete()
+        await context.bot.send_message(chat_id, "Команды доступны только админам")
+        return
+
     command_text = message.text or "/mask_char"
     service: ModerationService = context.application.bot_data["service"]
     new_mask_char = " ".join(context.args or []).strip()
@@ -227,6 +263,11 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     message, chat_id, chat_name = command_context
+    if not await _is_chat_admin(update, context):
+        await message.delete()
+        await context.bot.send_message(chat_id, "Команды доступны только админам")
+        return
+
     command_text = message.text or "/reset"
     service: ModerationService = context.application.bot_data["service"]
     user_id = message.from_user.id if message.from_user else 0
@@ -255,6 +296,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     message, chat_id, chat_name = command_context
+    if not await _is_chat_admin(update, context):
+        await message.delete()
+        await context.bot.send_message(chat_id, "Команды доступны только админам")
+        return
+
     command_text = message.text or "/help"
     service: ModerationService = context.application.bot_data["service"]
     user_id = message.from_user.id if message.from_user else 0
