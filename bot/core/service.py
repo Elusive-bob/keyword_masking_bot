@@ -144,6 +144,20 @@ class ModerationService:
         result_text = "\n".join(result_parts)
         return result_text
 
+    def build_help_command_result(self) -> str:
+        """Return a static list of all available commands with descriptions."""
+
+        return (
+            "Доступные команды:\n"
+            "/addword <слово> — добавить ключевое слово в список\n"
+            "/removeword <слово> — удалить ключевое слово из списка\n"
+            "/listwords — показать все настроенные ключевые слова\n"
+            "/mask_char <символ> — установить символ маскировки\n"
+            "/stats — показать статистику по ключевым словам и авторам\n"
+            "/reset — сбросить настройки чата на стандартные\n"
+            "/help — показать это сообщение"
+        )
+
     def log_caught_message(
         self,
         chat_id: int,

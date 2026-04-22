@@ -27,7 +27,7 @@ def create_telegram_application(token: str, service: ModerationService) -> Appli
     app.add_handler(CommandHandler("listwords", list_words_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("mask_char", set_mask_char_command))
-    app.add_handler(CommandHandler("reset", reset_command))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(
         MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, moderate_message)
     )
@@ -237,6 +237,30 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         command_text=command_text,
         chat_name=chat_name,
     )
+    await context.bot.send_message(chat_id, result_text)
+    service.log_command(
+        chat_id=chat_id,
+        user_id=user_id,
+        user_name=user_name,
+        original_text=command_text,
+        bot_response=result_text,
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /help by posting the list of available commands."""
+
+    command_context = _group_command_context(update)
+    if command_context is None:
+        return
+
+    message, chat_id, chat_name = command_context
+    command_text = message.text or "/help"
+    service: ModerationService = context.application.bot_data["service"]
+    user_id = message.from_user.id if message.from_user else 0
+    user_name = _author_name(message)
+    await message.delete()
+    result_text = service.build_help_command_result()
     await context.bot.send_message(chat_id, result_text)
     service.log_command(
         chat_id=chat_id,
